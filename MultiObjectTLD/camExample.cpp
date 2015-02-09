@@ -44,7 +44,7 @@ There are some keys to customize which components are displayed:
 #define CLASSIFIERFILENAME "test.moctld"
 
 //uncomment if you have a high resolution camera and want to speed up tracking
-#define FORCE_RESIZING
+#define FORCE_RESIZING 0
 #define RESOLUTION_X 320
 #define RESOLUTION_Y 240
 
@@ -58,6 +58,7 @@ CvCapture* capture;
 ObjectBox mouseBox = {0,0,0,0,0};
 int mouseMode = MOUSE_MODE_IDLE;
 int drawMode = 255;
+bool paused = true;
 bool learningEnabled = true, save = false, load = false, reset = false;
 
 void Init(int argc, char *argv[]);
@@ -77,11 +78,23 @@ int main(int argc, char *argv[])
 
 void Init(int argc, char *argv[])
 {  
-  capture = cvCaptureFromCAM(CV_CAP_ANY);
-  if(!capture){
-    std::cout << "error starting video capture" << std::endl;
-    exit(0);
+  if (argc == 1)
+  {
+    capture = cvCaptureFromCAM(CV_CAP_ANY);
+    if(!capture){
+      std::cout << "error starting video capture" << std::endl;
+      exit(0);
+    }
   }
+  else
+  {
+    capture = cvCaptureFromFile(argv[1]);
+    if(!capture){
+      std::cout << "error opening " << argv[1] << std::endl;
+      exit(0);
+    }
+  }
+
   //propose a resolution
   cvSetCaptureProperty(capture, CV_CAP_PROP_FRAME_WIDTH, 640);
   cvSetCaptureProperty(capture, CV_CAP_PROP_FRAME_HEIGHT, 480);
@@ -89,7 +102,7 @@ void Init(int argc, char *argv[])
   ivWidth = cvGetCaptureProperty(capture, CV_CAP_PROP_FRAME_WIDTH);
   ivHeight = cvGetCaptureProperty(capture, CV_CAP_PROP_FRAME_HEIGHT);
   std::cout << "camera/video resolution: " << ivWidth << "x" << ivHeight << std::endl;
-  #ifdef FORCE_RESIZING
+  #if FORCE_RESIZING
   ivWidth = RESOLUTION_X;
   ivHeight = RESOLUTION_Y;
   #endif
@@ -119,8 +132,8 @@ void* Run(void*)
   Matrix maRed;
   Matrix maGreen;
   Matrix maBlue;
-  unsigned char *img = new unsigned char[size*3];
-  #ifdef FORCE_RESIZING
+  unsigned char *img = nullptr;
+  #if FORCE_RESIZING
   CvSize wsize = {ivWidth, ivHeight};
   IplImage* frame = cvCreateImage(wsize, IPL_DEPTH_8U, 3);
   #endif
@@ -138,29 +151,36 @@ void* Run(void*)
     */
     
     // Grab an image
-    if(!cvGrabFrame(capture)){
-      std::cout << "error grabbing frame" << std::endl;
-      break;
+    if (!paused  ||  img == nullptr)
+    {
+      if (img == nullptr)
+        img = new unsigned char[size*3];
+
+      if(!cvGrabFrame(capture)){
+        std::cout << "error grabbing frame" << std::endl;
+        break;
+      }
+      #if FORCE_RESIZING
+      IplImage* capframe = cvRetrieveFrame(capture);
+      cvResize(capframe, frame);
+      #else
+      IplImage* frame = cvRetrieveFrame(capture);
+      #endif
+      for(int j = 0; j<size; j++){
+        img[j] = frame->imageData[j*3+2];
+        img[j+size] = frame->imageData[j*3+1];
+        img[j+2*size] = frame->imageData[j*3];
+      }
+      
+      // Process it with motld
+      p.processFrame(img);
     }
-    #ifdef FORCE_RESIZING
-    IplImage* capframe = cvRetrieveFrame(capture);
-    cvResize(capframe, frame);
-    #else
-    IplImage* frame = cvRetrieveFrame(capture);
-    #endif
-    for(int j = 0; j<size; j++){
-      img[j] = frame->imageData[j*3+2];
-      img[j+size] = frame->imageData[j*3+1];
-      img[j+2*size] = frame->imageData[j*3];
-    }
-    
-    // Process it with motld
-    p.processFrame(img);
-    
+
     // Add new box
     if(mouseMode == MOUSE_MODE_ADD_BOX){
       p.addObject(mouseBox);
       mouseMode = MOUSE_MODE_IDLE;
+      paused = false;
     }
     
     // Display result
@@ -196,6 +216,7 @@ void HandleInput(int interval)
       case 'r': reset = true; break;
       case 's': save = true;  break;
       case 'o': load = true;  break;
+      case ' ': paused = !paused;  break;
       case 27:  ivQuit = true; break; //ESC
       default: 
         //std::cout << "unhandled key-code: " << key << std::endl;
