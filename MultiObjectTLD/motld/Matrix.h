@@ -302,7 +302,7 @@ void Matrix::derivativeX(Matrix& result) const
   {
     result(0,y) = ivData[1 + y*ivWidth] - ivData[y*ivWidth];
      for(int x = 1; x < ivWidth-1; ++x)
-       result(x,y) = (ivData[x+1 +y*ivWidth] - ivData[x-1 +y*ivWidth]); // * 0.5;   
+        result(x,y) = (ivData[x+1 +y*ivWidth] - ivData[x-1 +y*ivWidth]); // * 0.5;   
     result(ivWidth-1,y) = ivData[ivWidth-1 + y*ivWidth] - ivData[ivWidth-2 + y*ivWidth];   
   }
 }
@@ -1059,7 +1059,8 @@ inline float& Matrix::operator()(const int ax, const int ay) const
   #ifdef _DEBUG
     if (ax >= ivWidth || ay >= ivHeight || ax < 0 || ay < 0){
       std::cerr << "Exception EMatrixRangeOverflow: x = " << ax << ", y = " << ay << std::endl;
-      return 0;
+      static float err = 0.0f;
+      return err;
     }
   #endif
   return ivData[ivWidth*ay+ax];
